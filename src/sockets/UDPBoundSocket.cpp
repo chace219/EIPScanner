@@ -22,7 +22,7 @@ namespace sockets {
 		: UDPBoundSocket(EndPoint(host, port)) {
 
 	}
-	UDPBoundSocket::UDPBoundSocket(EndPoint endPoint)
+	UDPBoundSocket::UDPBoundSocket(EndPoint endPoint, bool bindToGroup)
 		: UDPSocket(std::move(endPoint)) {
 		int on = 1;
 		if (setsockopt(_sockedFd, SOL_SOCKET, SO_REUSEADDR, (char *) &on, sizeof(on)) < 0) {
@@ -30,7 +30,12 @@ namespace sockets {
 		}
 
 		auto addr = _remoteEndPoint.getAddr();
-		addr.sin_addr.s_addr = INADDR_ANY;
+		// Unicast: bind the port on any local address. Multicast: bind to the
+		// group address so the socket only receives that group (and does not
+		// steal unicast datagrams on the same port).
+		if (!bindToGroup) {
+			addr.sin_addr.s_addr = INADDR_ANY;
+		}
 		if (bind(_sockedFd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 			throw std::system_error(BaseSocket::getLastError(), BaseSocket::getErrorCategory());
 		}

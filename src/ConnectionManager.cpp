@@ -300,7 +300,7 @@ namespace eipScanner {
 			return socket->second;
 		}
 
-		auto newSocket = std::make_shared<UDPBoundSocket>(groupEndPoint);
+		auto newSocket = std::make_shared<UDPBoundSocket>(groupEndPoint, /*bindToGroup=*/true);
 		newSocket->joinMulticastGroup(groupEndPoint.getAddr().sin_addr);
 		_socketMap[groupEndPoint] = newSocket;
 		attachIoReceiveHandler(newSocket);
