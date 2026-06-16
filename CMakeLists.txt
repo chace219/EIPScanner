@@ -11,7 +11,11 @@ project(EIPScanner
     HOMEPAGE_URL "https://github.com/nimbuscontrols/EIPScanner"
     )
 
-set(CMAKE_CXX_STANDARD 20)
+# C++17: the Luckfox/RV1106 SDK cross toolchain is GCC 8.3 (no C++20). The
+# codebase uses no C++20-only features, so this is a clean downgrade.
+# (A bare set() here would otherwise override -DCMAKE_CXX_STANDARD from buildroot.)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(ENABLE_VENDOR_SRC "Enable vendor source" ON)
 option(TEST_ENABLED "Enable unit test" OFF)
 option(EXAMPLE_ENABLED "Build examples" OFF)

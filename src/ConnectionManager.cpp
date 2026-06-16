@@ -6,6 +6,13 @@
 #include <cstdlib>
 #include <random>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#elif defined(_WIN32) || defined(WIN32) || defined(_WIN64)
+#include <ws2tcpip.h>
+#endif
+
 #include "ConnectionManager.h"
 #include "eip/CommonPacket.h"
 #include "cip/connectionManager/ForwardOpenRequest.h"
@@ -27,6 +34,12 @@ namespace eipScanner {
 	using sockets::UDPSocket;
 	using sockets::UDPBoundSocket;
 	using sockets::BaseSocket;
+
+	// IPv4 multicast range 224.0.0.0 .. 239.255.255.255 (class D).
+	static bool isMulticastAddr(const struct in_addr& a) {
+		uint32_t h = ntohl(a.s_addr);
+		return h >= 0xE0000000u && h <= 0xEFFFFFFFu;
+	}
 
 	enum class ConnectionManagerServiceCodes : cip::CipUsint {
 		FORWARD_OPEN = 0x54,
@@ -151,7 +164,27 @@ namespace eipScanner {
 			Logger(LogLevel::INFO) << "Open UDP socket to send data to "
 					<< ioConnection->_socket->getRemoteEndPoint().toString();
 
-			findOrCreateSocket(sockets::EndPoint(si->getRemoteEndPoint().getHost(), EIP_DEFAULT_IMPLICIT_PORT));
+			// Set up the T2O receive socket. If the target advertised a multicast
+			// T2O_SOCKADDR_INFO, join that group; otherwise receive unicast on the
+			// implicit port (legacy point-to-point behaviour).
+			auto t2oSockAddrInfo = std::find_if(additionalItems.begin(), additionalItems.end(),
+					[](auto item) { return item.getTypeId() == eip::CommonPacketItemIds::T2O_SOCKADDR_INFO; });
+
+			bool t2oMulticast = false;
+			if (t2oSockAddrInfo != additionalItems.end()) {
+				Buffer t2oSockAddrBuffer(t2oSockAddrInfo->getData());
+				sockets::EndPoint t2oEndPoint("", 0);
+				t2oSockAddrBuffer >> t2oEndPoint;
+
+				if (isMulticastAddr(t2oEndPoint.getAddr().sin_addr)) {
+					findOrCreateMulticastSocket(t2oEndPoint);
+					t2oMulticast = true;
+				}
+			}
+
+			if (!t2oMulticast) {
+				findOrCreateSocket(sockets::EndPoint(si->getRemoteEndPoint().getHost(), EIP_DEFAULT_IMPLICIT_PORT));
+			}
 
 			auto result = _connectionMap
 					.insert(std::make_pair(response.getT2ONetworkConnectionId(), ioConnection));
@@ -226,39 +259,61 @@ namespace eipScanner {
 		}
 	}
 
+	void ConnectionManager::attachIoReceiveHandler(const UDPBoundSocket::SPtr& socket) {
+		socket->setBeginReceiveHandler([this](BaseSocket& sock) {
+			auto recvData = sock.Receive(8192);
+			CommonPacket commonPacket;
+			commonPacket.expand(recvData);
+
+			const auto& items = commonPacket.getItems();
+			if (items.size() < 2) {
+				Logger(LogLevel::WARNING) << "Received malformed I/O CommonPacket: expected >=2 items, got " << items.size();
+				return;
+			}
+
+			// TODO: Check TypeIDs and sequence of the packages
+			Buffer buffer(items[0].getData());
+			cip::CipUdint connectionId;
+			buffer >> connectionId;
+			Logger(LogLevel::DEBUG) << "Received data from connection T2O_ID=" << connectionId;
+
+			auto io = _connectionMap.find(connectionId);
+			if (io != _connectionMap.end()) {
+				io->second->notifyReceiveData(items[1].getData());
+			} else {
+				Logger(LogLevel::ERROR) << "Received data from unknown connection T2O_ID=" << connectionId;
+			}
+		});
+	}
+
 	UDPBoundSocket::SPtr ConnectionManager::findOrCreateSocket(const sockets::EndPoint& endPoint) {
 		auto socket = _socketMap.find(endPoint);
 		if (socket == _socketMap.end()) {
 			auto newSocket = std::make_shared<UDPBoundSocket>(endPoint);
 			_socketMap[endPoint] = newSocket;
-			newSocket->setBeginReceiveHandler([](sockets::BaseSocket& sock) {
-			  (void) sock;
-				Logger(LogLevel::DEBUG) << "Received something";
-			});
-
-			newSocket->setBeginReceiveHandler([this](BaseSocket& sock) {
-				auto recvData = sock.Receive(8192);
-				CommonPacket commonPacket;
-				commonPacket.expand(recvData);
-
-				// TODO: Check TypeIDs and sequence of the packages
-				Buffer buffer(commonPacket.getItems().at(0).getData());
-				cip::CipUdint connectionId;
-				buffer >> connectionId;
-				Logger(LogLevel::DEBUG) << "Received data from connection T2O_ID=" << connectionId;
-
-				auto io = _connectionMap.find(connectionId);
-				if (io != _connectionMap.end()) {
-					io->second->notifyReceiveData(commonPacket.getItems().at(1).getData());
-				} else {
-					Logger(LogLevel::ERROR) << "Received data from unknown connection T2O_ID=" << connectionId;
-				}
-			});
-
+			attachIoReceiveHandler(newSocket);
 			return newSocket;
 		}
 
 		return socket->second;
+	}
+
+	// Receive T2O over a multicast group: bind to the group address/port
+	// (to avoid capturing unicast datagrams on the same port) and join the group
+	// the target advertised in its T2O_SOCKADDR_INFO.
+		auto socket = _socketMap.find(groupEndPoint);
+		if (socket != _socketMap.end()) {
+			return socket->second;
+		}
+
+		auto newSocket = std::make_shared<UDPBoundSocket>(groupEndPoint, /*bindToGroup=*/true);
+		newSocket->joinMulticastGroup(groupEndPoint.getAddr().sin_addr);
+		_socketMap[groupEndPoint] = newSocket;
+		attachIoReceiveHandler(newSocket);
+
+		Logger(LogLevel::INFO) << "Joined multicast group " << groupEndPoint.toString()
+				<< " for T2O reception";
+		return newSocket;
 	}
 
 	bool ConnectionManager::hasOpenConnections() const {

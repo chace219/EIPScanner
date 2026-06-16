@@ -26,7 +26,8 @@ Vendor specific objects:
 ## Requirements
 
 * CMake 3.5 and higher
-* C++20 compiler (tested with GCC and MinGW)
+* C++17 compiler (this fork: downgraded from upstream C++20 for the
+  Luckfox/RV1106 SDK toolchain, GCC 8.3 / uClibc-ng; no C++20-only features used)
 * Linux, MacOS, and Windows
 
 ## Installing

@@ -19,9 +19,20 @@ namespace sockets {
 		using WPtr = std::weak_ptr<UDPBoundSocket>;
 		using SPtr = std::shared_ptr<UDPBoundSocket>;
 
-		explicit UDPBoundSocket(EndPoint endPoint);
+		// bindToGroup=true binds to endPoint's address (a multicast group) so
+		// the socket only receives that group's datagrams; false binds
+		// INADDR_ANY (the legacy unicast-receive behaviour).
+		explicit UDPBoundSocket(EndPoint endPoint, bool bindToGroup = false);
 		UDPBoundSocket(std::string host, int port);
 		virtual ~UDPBoundSocket();
+
+		// Join an IPv4 multicast group on this bound socket so a target's
+		// T2O multicast producer is received. Dropped on destruction.
+		void joinMulticastGroup(const struct in_addr& group);
+
+	private:
+		struct in_addr _multicastGroup{};
+		bool _joinedMulticast = false;
 	};
 }
 }
