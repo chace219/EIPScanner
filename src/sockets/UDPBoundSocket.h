@@ -22,6 +22,14 @@ namespace sockets {
 		explicit UDPBoundSocket(EndPoint endPoint);
 		UDPBoundSocket(std::string host, int port);
 		virtual ~UDPBoundSocket();
+
+		// Join an IPv4 multicast group on this bound socket so a target's
+		// T2O multicast producer is received. Dropped on destruction.
+		void joinMulticastGroup(const struct in_addr& group);
+
+	private:
+		struct in_addr _multicastGroup{};
+		bool _joinedMulticast = false;
 	};
 }
 }

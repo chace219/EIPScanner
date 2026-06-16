@@ -79,6 +79,8 @@ namespace eipScanner {
 		std::map<sockets::EndPoint, std::shared_ptr<sockets::UDPBoundSocket>> _socketMap;
 
 		sockets::UDPBoundSocket::SPtr  findOrCreateSocket(const sockets::EndPoint& endPoint);
+		sockets::UDPBoundSocket::SPtr  findOrCreateMulticastSocket(const sockets::EndPoint& groupEndPoint);
+		void attachIoReceiveHandler(const sockets::UDPBoundSocket::SPtr& socket);
 		cip::CipUint _incarnationId;
 	};
 }
