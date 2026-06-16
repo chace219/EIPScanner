@@ -265,15 +265,21 @@ namespace eipScanner {
 			CommonPacket commonPacket;
 			commonPacket.expand(recvData);
 
+			const auto& items = commonPacket.getItems();
+			if (items.size() < 2) {
+				Logger(LogLevel::WARNING) << "Received malformed I/O CommonPacket: expected >=2 items, got " << items.size();
+				return;
+			}
+
 			// TODO: Check TypeIDs and sequence of the packages
-			Buffer buffer(commonPacket.getItems().at(0).getData());
+			Buffer buffer(items[0].getData());
 			cip::CipUdint connectionId;
 			buffer >> connectionId;
 			Logger(LogLevel::DEBUG) << "Received data from connection T2O_ID=" << connectionId;
 
 			auto io = _connectionMap.find(connectionId);
 			if (io != _connectionMap.end()) {
-				io->second->notifyReceiveData(commonPacket.getItems().at(1).getData());
+				io->second->notifyReceiveData(items[1].getData());
 			} else {
 				Logger(LogLevel::ERROR) << "Received data from unknown connection T2O_ID=" << connectionId;
 			}
