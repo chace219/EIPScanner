@@ -13,6 +13,7 @@
 
 #include <utility>
 #include <algorithm>
+#include <thread>
 
 #include "BaseSocket.h"
 #include "Platform.h"
@@ -118,6 +119,15 @@ namespace sockets {
 	}
 
 	void BaseSocket::select(std::vector<BaseSocket::SPtr> sockets, std::chrono::milliseconds timeout) {
+		// With no sockets to wait on (e.g. no connection is open yet, or the last
+		// Forward_Open was rejected), there is nothing to select(). Sleep out the
+		// timeout and return — dereferencing *max_element() of an empty range is
+		// undefined behaviour and segfaulted the whole process here.
+		if (sockets.empty()) {
+			std::this_thread::sleep_for(timeout);
+			return;
+		}
+
 		BaseSocket::SPtr socketWithMaxFd = *std::max_element(sockets.begin(), sockets.end(), [](auto sock1, auto sock2) {
 			return sock1->getSocketFd() < sock2->getSocketFd();
 		});
