@@ -88,8 +88,18 @@ namespace eipScanner {
 
 		if ((connectionParameters.transportTypeTrigger & NetworkConnectionParams::CLASS1) > 0
 			|| (connectionParameters.transportTypeTrigger & NetworkConnectionParams::CLASS3) > 0) {
-			connectionParameters.o2tNetworkConnectionParams += 2;
-			connectionParameters.t2oNetworkConnectionParams += 2;
+			// The +2 reserves the 2-byte sequence count that Class 1/3 I/O data
+			// carries. A NULL connection (e.g. the Input-Only / Listen-Only O2T
+			// heartbeat — assembly instance 198 on the Joral encoder, "0 bytes")
+			// transfers no data and no sequence count: adding 2 would make a
+			// 0-byte heartbeat advertise connection size 2, which conformant
+			// adapters reject with Forward_Open extended status 0x0123 (invalid
+			// O2T network connection type). Only reserve the count on a real
+			// (non-null) data leg.
+			if (o2tNCP.getConnectionType() != NetworkConnectionParametersBuilder::NULL_TYPE)
+				connectionParameters.o2tNetworkConnectionParams += 2;
+			if (t2oNCP.getConnectionType() != NetworkConnectionParametersBuilder::NULL_TYPE)
+				connectionParameters.t2oNetworkConnectionParams += 2;
 		}
 
 		if (connectionParameters.o2tRealTimeFormat) {
