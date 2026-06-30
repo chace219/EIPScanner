@@ -311,6 +311,7 @@ namespace eipScanner {
 	// Receive T2O over a multicast group: bind to the group address/port
 	// (to avoid capturing unicast datagrams on the same port) and join the group
 	// the target advertised in its T2O_SOCKADDR_INFO.
+	UDPBoundSocket::SPtr ConnectionManager::findOrCreateMulticastSocket(const sockets::EndPoint& groupEndPoint) {
 		auto socket = _socketMap.find(groupEndPoint);
 		if (socket != _socketMap.end()) {
 			return socket->second;
